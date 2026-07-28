@@ -1,0 +1,6 @@
+outs:
+- md5: f1eaf9185f3a5e17aad0f9c8219d99b9.dir
+  size: 168393354
+  nfiles: 32
+  hash: md5
+  path: eabl parsed csv
