@@ -5,3 +5,4 @@ __pycache__/
 .env
 /EABL dataset
 /eabl parsed csv
+/eabl parsed data

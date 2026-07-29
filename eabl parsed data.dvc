@@ -1,0 +1,6 @@
+outs:
+- md5: 09256b28e4f2045a0e0750c364f234fb.dir
+  size: 46231255
+  nfiles: 32
+  hash: md5
+  path: eabl parsed data
