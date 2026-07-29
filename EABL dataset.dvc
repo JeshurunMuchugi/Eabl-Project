@@ -1,6 +1,6 @@
 outs:
-- md5: 1cb7d7c1a85d562ca82e21e4e34d0e9d.dir
-  size: 303614581
-  nfiles: 68
+- md5: 5ccb52e65759281c917f1a566300e50e.dir
+  size: 150808532
+  nfiles: 34
   hash: md5
   path: EABL dataset
