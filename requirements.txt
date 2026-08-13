@@ -1,2 +1,10 @@
+# Data parsing / conversion (parse_sales_reports.py, dataFile_converter.py, convert_parsed_to_csv.py)
 pandas
 openpyxl
+dvc
+dagshub
+scikit-learn
+shap
+seaborn
+matplotlib
+ipykernel
