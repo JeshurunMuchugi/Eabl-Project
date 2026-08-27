@@ -10,3 +10,4 @@ matplotlib
 ipykernel
 statsmodels
 linearmodels
+statistics
