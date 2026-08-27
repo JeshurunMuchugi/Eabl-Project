@@ -8,3 +8,5 @@ shap
 seaborn
 matplotlib
 ipykernel
+statsmodels
+linearmodels
