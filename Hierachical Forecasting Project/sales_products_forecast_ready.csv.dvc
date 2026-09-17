@@ -1,0 +1,5 @@
+outs:
+- md5: d0052c45ce0b6993d065c5e27e2af4f5
+  size: 207789776
+  hash: md5
+  path: sales_products_forecast_ready.csv
