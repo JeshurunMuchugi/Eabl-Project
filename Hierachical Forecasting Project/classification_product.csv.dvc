@@ -1,0 +1,5 @@
+outs:
+- md5: 99e20336d1854298a7badea55c5d5726
+  size: 9751
+  hash: md5
+  path: classification_product.csv

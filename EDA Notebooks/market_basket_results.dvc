@@ -1,0 +1,6 @@
+outs:
+- md5: d02ce166291fa4dcd4077481f9abb1d3.dir
+  size: 6150
+  nfiles: 7
+  hash: md5
+  path: market_basket_results

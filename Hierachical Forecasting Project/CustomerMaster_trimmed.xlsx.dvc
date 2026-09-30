@@ -1,0 +1,5 @@
+outs:
+- md5: 5d2beffc1d4aa795fafb66e96e26dfef
+  size: 481783
+  hash: md5
+  path: CustomerMaster_trimmed.xlsx

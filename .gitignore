@@ -6,3 +6,11 @@ __pycache__/
 /EABL dataset
 /eabl parsed csv
 /eabl parsed data
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.pkl
+.ipynb_checkpoints/
+anaconda_projects/
+Untitled*.ipynb

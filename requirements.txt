@@ -1,2 +1,26 @@
+# Data parsing / conversion (parse_sales_reports.py, dataFile_converter.py, convert_parsed_to_csv.py)
 pandas
+pyarrow                    # parquet read/write engine for pandas
 openpyxl
+dvc
+dagshub
+scikit-learn
+shap
+seaborn
+matplotlib
+ipykernel
+statsmodels
+linearmodels
+statistics
+matplotlib-inline==0.2.2
+mlxtend==0.23.4
+networkx==3.2.1
+seaborn==0.13.2
+# requirements.txt additions
+statsforecast>=1.7        # AutoARIMA/AutoETS/Theta baselines, fast per-series
+mlforecast>=0.13          # global LightGBM model across ALL series — primary engine
+hierarchicalforecast>=0.4 # reconciliation: BottomUp, MinTrace, etc.
+utilsforecast>=0.1        # multi-series metrics: MASE, bias, pinball
+lightgbm>=4.3
+holidays>=0.47             # holidays.Kenya()
+optuna>=3.6                # hyperparameter tuning against the backtest

@@ -2,3 +2,5 @@
     remote = origin
 ['remote "origin"']
     url = https://dagshub.com/jeshurunmuchugi/dvcEabldata.dvc
+    read_timeout = 600
+    connect_timeout = 60
