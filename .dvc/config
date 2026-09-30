@@ -1,5 +1,6 @@
 [core]
     remote = origin
+    autostage = true
 ['remote "origin"']
     url = https://dagshub.com/jeshurunmuchugi/dvcEabldata.dvc
     read_timeout = 600
