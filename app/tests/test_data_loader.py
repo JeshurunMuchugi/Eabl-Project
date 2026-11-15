@@ -169,3 +169,25 @@ def test_model_evidence_summaries(data):
     recon = charts.reconciliation_table(vd.practice_reconciliation)
     assert recon.loc[recon["chosen"] == "✓ chosen", "Method"].tolist() == ["MinT shrink"]
     assert charts.winners_table(vd.practice_winners, config.LEVELS)["series"].sum() == len(vd.practice_winners)
+
+
+# ---- 10. Hierarchy tree (Step 14): every series once, boxes add up, true numbers in the hover --------------
+import tree                                                                       # noqa: E402
+
+
+@pytest.mark.parametrize("version", list(config.VERSIONS))
+def test_tree_data(data, version):
+    h, vd = data["hierarchy"], data["versions"][version]
+    t = tree.icicle_data(h, vd.final, vd.routing)
+    assert t["ids"] == h.ids                                                             # 283 boxes, in hierarchy order
+    product_labels = [label for label, sid in zip(t["labels"], t["ids"]) if h.level[sid] == "Product"]
+    assert len(set(product_labels)) == config.N_PRODUCTS                                 # "SKU (code)": no two products alike
+    size = dict(zip(t["ids"], t["values"]))
+    for series_id, kids in h.children.items():                                           # a parent box = its children's boxes
+        if kids:
+            assert size[series_id] == pytest.approx(sum(size[k] for k in kids))
+    truth = vd.final.groupby("unique_id")["forecast"].sum()
+    assert all(size[p] >= tree.MIN_CASES and size[p] >= truth[p] for p in h.products)    # never smaller than the forecast
+    assert size["Total"] <= truth["Total"] * 1.02                                        # minimum boxes add under 2%
+    assert f"{truth['Total']:,.1f} cases" in t["hover"][0]                               # hover shows the TRUE forecast
+    assert set(t["colours"]) <= set(config.LANE_COLOURS.values()) | {config.UPPER_COLOUR}

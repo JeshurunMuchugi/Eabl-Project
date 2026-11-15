@@ -89,6 +89,14 @@ LANE_COLOURS = {
     "judgement (one-sale)": "#CC79A7",
     "zero": "#8C8C8C",
 }
+LANE_WORDS = {                              # the lane in words, for hover texts and the tree legend (Step 14)
+    "standard": "standard (regular sales - a model chosen on cv1 + cv2)",
+    "intermittent": "intermittent (many zero weeks - TSB)",
+    "judgement (new launch)": "judgement: new launch (too new to test)",
+    "judgement (one-sale)": "judgement: one sale only",
+    "zero": "zero: stopped (forecast 0)",
+}
+UPPER_COLOUR = "#DDE3EC"                    # tree boxes of Total / categories / sub-categories / brands (no lane)
 FLAG_COLOUR = "#D55E00"                     # review-flag outline
 PATH_FILL = "#B7C9E2"                       # circles on the selected path in the tree
 ACTUAL_COLOUR = "#1D2430"                   # real sales line

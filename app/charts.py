@@ -245,3 +245,17 @@ def coverage_table(vd, levels):
     bt = bt.reindex([lv for lv in levels if lv in bt.index]).rename_axis("Group").reset_index().assign(Test=TESTS["backtest"])
     table = pd.concat([cv2, bt], ignore_index=True)[["Test", "Group", "Weeks with a range", "Inside 80%", "Inside 95%"]]
     return table.round(3)
+
+
+# ---- Step 14: the hierarchy tree (Plotly icicle) ----
+def icicle_figure(data, focus):
+    """Clickable icicle of the 283 series (data from tree.icicle_data). 'focus' is the box shown at the top;
+    three levels are shown at a time. Box size = 13-week forecast; colour = lane; hover = the numbers in words."""
+    fig = go.Figure(go.Icicle(
+        ids=data["ids"], parents=data["parents"], labels=data["labels"], values=data["values"],
+        branchvalues="total", level=focus, maxdepth=3, sort=False,
+        marker=dict(colors=data["colours"], line=dict(color="white", width=1)),
+        customdata=data["hover"], hovertemplate="%{customdata}<extra></extra>",
+        textinfo="label", tiling=dict(orientation="h"), pathbar=dict(visible=True, side="top")))
+    fig.update_layout(height=420, margin=dict(l=8, r=8, t=36, b=8), template="plotly_white")
+    return fig

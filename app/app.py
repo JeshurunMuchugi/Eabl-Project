@@ -19,10 +19,12 @@ Then open http://127.0.0.1:8000 in your browser. Stop with Ctrl+C in the termina
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
 import pandas as pd                                            
+import plotly.graph_objects as go
 
 import charts
 import config
 import data_loader
+import tree
 
 # ---- Read and check every file once, when the app starts ------------------------------------------------
 try:
@@ -75,6 +77,17 @@ def file_safe(text):
 def pill(text, tone="light"):
     return ui.span(text, class_=f"badge rounded-pill text-bg-{tone} border me-1 mb-1 fw-normal fs-6")
 
+def tree_legend():
+    """The lane colours in words, under the tree (colour is never the only clue)."""
+    swatches = [("upper levels", config.UPPER_COLOUR)] + [
+        (config.LANE_WORDS[lane].split(" (")[0], colour) for lane, colour in config.LANE_COLOURS.items()
+        if lane != "judgement (one-sale)"]                                       # same colour as new launch
+    return ui.div(*[ui.span(ui.span(style=f"display:inline-block;width:12px;height:12px;background:{colour};"
+                                           "border:1px solid #999;margin-right:4px;vertical-align:-1px"),
+                            name.replace("judgement: new launch", "judgement"), class_="me-3 small")
+                    for name, colour in swatches], class_="mt-1")
+
+
 
 def coming_soon(step, what):
     return ui.div(ui.p(ui.strong(f"Coming in Step {step}. "), what), class_="text-muted p-3")
@@ -103,8 +116,12 @@ def build_ui():
     forecast_page = ui.nav_panel(
         "Forecast",
         ui.output_ui("title_strip"),
-        ui.card(ui.card_header("Product hierarchy"),
-                coming_soon(14, "A clickable tree: Total -> Beer / RTD / Spirits -> sub-category -> brand -> product.")),
+              ui.card(ui.card_header("Product hierarchy: click a box to select it (click the top box to go back up)"),
+                output_widget("tree_chart"),
+                tree_legend(),
+                ui.p("Box size = 13-week forecast (weeks 67-79); very small and stopped products are drawn at a minimum "
+                     "size so they can be clicked - hover for the true number.", class_="text-muted small mb-0")),
+
         ui.navset_card_underline(
             ui.nav_panel(window_title("final", "Final forecast"),
                          ui.output_ui("final_pills"),
@@ -181,12 +198,41 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.series)
     def _from_picker():
-        if input.series():
+        if input.series() and input.series() != selected():   # a real change only (the tree also moves the picker)
             selected.set(input.series())
 
     @reactive.calc
     def version_data():                                   # every view reads the chosen version through this
         return DATA["versions"][input.version()]
+
+
+    # ---- Step 14: the hierarchy tree ----
+    @reactive.effect
+    def _picker_follows():                                # the tree (or any other part) changed the selection
+        if input.series() != selected():
+            ui.update_selectize("series", selected=selected())
+
+    @reactive.calc
+    def tree_focus():                                     # the box shown at the top of the tree
+        series_id = selected()
+        return series_id if DATA["hierarchy"].children[series_id] else DATA["hierarchy"].parent[series_id]
+
+    @render_plotly
+    def tree_chart():
+        focus = tree_focus()
+        vd = version_data()
+        widget = go.FigureWidget(charts.icicle_figure(tree.icicle_data(DATA["hierarchy"], vd.final, vd.routing), focus))
+
+        def on_click(trace, points, state):               # a box was clicked
+            if not points.point_inds:
+                return
+            clicked = trace.ids[points.point_inds[0]]
+            if clicked == focus and clicked != "Total":   # the top box = go back up one level
+                clicked = DATA["hierarchy"].parent[clicked]
+            selected.set(clicked)
+
+        widget.data[0].on_click(on_click)
+        return widget
 
     @output(suspend_when_hidden=False)                    # fill it even when the top bar is folded on a small screen
     @render.ui
