@@ -15,3 +15,4 @@ __pycache__/
 anaconda_projects/
 Untitled*.ipynb
 /F1 outputs
+.pytest_cache/
