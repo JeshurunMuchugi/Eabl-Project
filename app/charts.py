@@ -259,3 +259,41 @@ def icicle_figure(data, focus):
         textinfo="label", tiling=dict(orientation="h"), pathbar=dict(visible=True, side="top")))
     fig.update_layout(height=420, margin=dict(l=8, r=8, t=36, b=8), template="plotly_white")
     return fig
+
+
+# ---- Step 15: the Flags tab and the Product explorer ----
+def split_flags(text):
+    """'low confidence (...); 13-week total off by > 50%' -> ['low confidence (...)', '13-week total off by > 50%']."""
+    return [part.strip() for part in str(text).split(";") if part.strip()] if isinstance(text, str) else []
+
+
+def flags_table(final_df, hierarchy, series_id, sku_names):
+    """One row per review flag of the series and of its direct children (as the notebook wrote them), or None."""
+    first = final_df.drop_duplicates("unique_id").set_index("unique_id")
+    totals = final_df.groupby("unique_id")["forecast"].sum()
+    rows = []
+    for sid in [series_id] + hierarchy.children[series_id]:
+        for flag in split_flags(first.at[sid, "flag list"]):
+            code = sid.rsplit("/", 1)[-1].strip()                        # products: "SKU (code)" - two SKUs share a name
+            name = f"{sku_names[sid]} ({code})" if sid in sku_names else code
+            rows.append({"Series": "▶ this series" if sid == series_id else name,
+                         "Level": hierarchy.level[sid], "Lane": first.at[sid, "lane"] if isinstance(first.at[sid, "lane"], str) else "-",
+                         "13-week forecast (cases)": round(float(totals[sid]), 1), "Flag (please review)": flag})
+    return pd.DataFrame(rows) if rows else None
+
+
+def explorer_table(final_df, routing, hierarchy):
+    """All 188 products in one table: where each sits, how the router labelled it, its lane, method, forecast, flags."""
+    first = final_df.drop_duplicates("unique_id").set_index("unique_id")
+    totals = final_df.groupby("unique_id")["forecast"].sum()
+    r = routing.set_index("unique_id")
+    rows = []
+    for pid in hierarchy.products:
+        category, sub_category, brand, code = [part.strip() for part in pid.split("/")]
+        rows.append({"Product": f"{r.at[pid, 'SKU']} ({code})", "Category": category, "Sub-category": sub_category,
+                     "Brand": brand, "F2 label": r.at[pid, "F2 label (weeks 1-66)"], "F5 family": r.at[pid, "F5 family (weeks 1-66)"],
+                     "Weeks on sale": int(r.at[pid, "weeks_on_sale"]), "Selling weeks": int(r.at[pid, "selling_weeks"]),
+                     "Lane": r.at[pid, "lane"], "Method": r.at[pid, "method"],
+                     "13-week forecast (cases)": round(float(totals[pid]), 1),
+                     "Flags": len(split_flags(first.at[pid, "flag list"])), "id": pid})
+    return pd.DataFrame(rows)

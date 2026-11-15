@@ -165,7 +165,10 @@ def build_ui():
                          ui.p("The backtest forecast was made on 6 Apr 2026 from weeks 1-53 and sealed; weeks 54-66 were "
                               "opened once, in Step 8.", class_="text-muted small"), value="backtest"),
 
-            ui.nav_panel("Flags", coming_soon(15, "Review notes for this series and its children."), value="flags"),
+            ui.nav_panel("Flags",
+                         ui.p("Review notes the notebook wrote for this series and its children. A flag does not mean the "
+                              "forecast is wrong - it means a planner should look at it before using it.", class_="text-muted small"),
+                         ui.output_ui("flags_note"), ui.output_data_frame("flags_grid"), value="flags"),
             ui.nav_panel("Step 10", coming_soon("10 (later)", "EABL's real sales for weeks 67-79."), value="step10"),
             id="tabs", selected="final",
         ),
@@ -189,7 +192,11 @@ def build_ui():
                     ui.output_data_frame("coverage_grid")),
             ui.card(ui.card_header("5. Known weak spots"), ui.output_ui("weak_spots")),
         ),
-        ui.nav_panel("Product explorer", coming_soon(15, "All 188 products with their labels, lane and method.")),
+        ui.nav_panel("Product explorer",
+                     ui.p("All 188 products for the version chosen in the left panel. Type in the boxes under the column "
+                          "names to filter; click a column name to sort. Click a row to open that product on the Forecast page.",
+                          class_="text-muted"),
+                     ui.output_data_frame("explorer_grid"), value="explorer"),
         ui.nav_spacer(),
         ui.nav_control(ui.output_ui("badge")),
         title=config.APP_TITLE, id="page", sidebar=sidebar, window_title=config.APP_TITLE,
@@ -340,6 +347,39 @@ def server(input, output, session):
     def children_grid():
         table = charts.children_table(version_data().final, DATA["hierarchy"], selected(), sku_names())
         return None if table is None else render.DataGrid(table, width="100%")
+        # ---- Step 15: the Flags tab and the Product explorer page ----
+    @render.ui
+    def flags_note():
+        if charts.flags_table(version_data().final, DATA["hierarchy"], selected(), sku_names()) is None:
+            return ui.p("No review flags for this series or its children.", class_="text-muted")
+        return None
+
+    @render.data_frame
+    def flags_grid():
+        table = charts.flags_table(version_data().final, DATA["hierarchy"], selected(), sku_names())
+        return None if table is None else render.DataGrid(table, width="100%")
+
+    @reactive.calc
+    def explorer():
+        return charts.explorer_table(version_data().final, version_data().routing, DATA["hierarchy"])
+
+    @render.data_frame
+    def explorer_grid():
+        return render.DataGrid(explorer().drop(columns="id"), filters=True, selection_mode="row", width="100%", height="75vh",
+                               styles={"location": "body", "style": {"white-space": "nowrap"}})   # one line per product
+
+    @reactive.effect
+    @reactive.event(input.explorer_grid_cell_selection)
+    async def _from_explorer():                           # a row was clicked: open that product on the Forecast page
+        rows = (input.explorer_grid_cell_selection() or {}).get("rows") or []
+        if rows:
+            product = explorer()["id"].iloc[rows[0]]
+            if product != selected():
+                selected.set(product)
+            ui.update_navset("page", selected="Forecast")
+            await explorer_grid.update_cell_selection(None)   # un-select, so clicking the same row again works
+
+
     # ---- Step 13: the Model evidence page ----
     @reactive.calc
     def accuracy():

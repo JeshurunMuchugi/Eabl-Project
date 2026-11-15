@@ -214,3 +214,22 @@ def test_circle_tree(data):
     flagged = vd.final.drop_duplicates("unique_id")["flag list"].fillna("").str.strip().ne("").sum()
     assert sum(n["itemStyle"]["borderColor"] == config.FLAG_COLOUR for n in nodes.values()) == flagged
     assert tree.echarts_tree(h, vd.final, vd.routing, "Spirits/Premium")["height"] > t["height"]   # 25 brands: taller
+
+
+# ---- 12. Flags tab and Product explorer (Step 15): every flag and every product, nothing lost or invented -----
+def test_flags_and_explorer(data):
+    h, vd = data["hierarchy"], data["versions"]["dec_cleaned"]
+    sku = vd.routing.set_index("unique_id")["SKU"].to_dict()
+    first = vd.final.drop_duplicates("unique_id").set_index("unique_id")
+    brand = "Spirits/Mainstream/Chrome Brandy"
+    raw = [first.at[s, "flag list"] for s in [brand] + h.children[brand]]
+    expected = sum(text.count(";") + 1 for text in raw if isinstance(text, str))       # counted from the raw text
+    flags = charts.flags_table(vd.final, h, brand, sku)
+    assert len(flags) == expected and expected > 0                                       # one row per flag, none lost
+    assert charts.flags_table(vd.final, h, "Beer/ANADS/Alvaro/672279", sku) is None       # no flags -> no table
+    ex = charts.explorer_table(vd.final, vd.routing, h)
+    assert len(ex) == config.N_PRODUCTS and ex["id"].tolist() == h.products              # all 188 products, in order
+    assert ex["Product"].is_unique                                                       # "SKU (code)": no two alike
+    assert ex["Lane"].value_counts().to_dict() == vd.routing["lane"].value_counts().to_dict()
+    total = vd.final.groupby("unique_id")["forecast"].sum()["Total"]
+    assert ex["13-week forecast (cases)"].sum() == pytest.approx(total, abs=1)              # products add up to the Total
