@@ -252,3 +252,16 @@ def test_challengers_match_notebook(data):
         broken = {k: getattr(vd, k) for k in dl.NEEDED_COLUMNS}
         broken["challengers_fc_normal"] = broken["challengers_fc_normal"].assign(**{"official forecast": lambda d: d["official forecast"] + 1})
         dl.check_challengers(broken, data["hierarchy"])
+
+
+# ---- 14. Help panel and zoom (Step 17): the help's range example is the real recipe; zoom only changes the axis ----
+@pytest.mark.parametrize("version", list(config.VERSIONS))
+def test_help_range_example_and_zoom(data, version):
+    vd = data["versions"][version]
+    ex = charts.range_example(vd.final, vd.percentiles)
+    assert ex["scale"] > 0 and ex["lo80"] == pytest.approx(ex["lo80_rebuilt"], abs=0.01)   # lower end = forecast + low x scale
+    assert len(charts.percentile_table(vd.percentiles)) == config.PERCENTILE_GROUPS
+    rows = charts.rows_for(vd.challengers_fc_normal, "Total")
+    flat, zoomed = charts.challenger_figure(rows, False), charts.challenger_figure(rows, False, zoom=True)
+    assert flat.layout.yaxis.rangemode == "tozero" and zoomed.layout.yaxis.rangemode == "normal"
+    assert [list(t.y) for t in flat.data] == [list(t.y) for t in zoomed.data]               # same numbers, only the axis

@@ -303,8 +303,10 @@ def explorer_table(final_df, routing, hierarchy):
 CHALLENGER_LINES = ["official"] + config.CHALLENGER_MODELS            # the three forecasts compared
 
 
-def challenger_figure(rows, with_real):
-    """Official forecast vs the two challengers for one series; with_real adds the real sales (backtest weeks 54-66)."""
+def challenger_figure(rows, with_real, zoom=False):
+    """Official forecast vs the two challengers for one series; with_real adds the real sales (backtest weeks 54-66).
+    zoom=False: the axis starts at 0 (true size of the differences); zoom=True: the axis fits the lines (shape visible)."""
+
     fig = go.Figure()
     x = as_dates(rows["ds"])
     if with_real:
@@ -316,8 +318,10 @@ def challenger_figure(rows, with_real):
                                  line=dict(color=config.CHALLENGER_COLOURS[name], width=3 if name == "official" else 2,
                                            dash=None if name == "official" else "dash")))
     fig.update_layout(height=340, margin=dict(l=56, r=16, t=30, b=36), template="plotly_white", hovermode="x unified",
-                      legend=dict(orientation="h", y=1.12), yaxis=dict(title="cases per week", rangemode="tozero"),
-                      xaxis=dict(type="date"))                         # from 0, like the other forecast charts
+                                            legend=dict(orientation="h", y=1.12),
+                      yaxis=dict(title="cases per week", rangemode="normal" if zoom else "tozero"),
+                      xaxis=dict(type="date"))
+                        # from 0, like the other forecast charts
     return fig
 
 
@@ -355,3 +359,24 @@ def challenger_level_table(bt_by_rule, step8, levels):
     table["order"] = table["Level"].map({lv: i for i, lv in enumerate(levels)})
     table = table.sort_values(["Rule", "order"], kind="stable").drop(columns="order")
     return table.rename(columns={"official": "Official MASE", **{m: f"{m} MASE" for m in config.CHALLENGER_MODELS}}).round(3)
+
+
+# ---- Step 17: the help panel ----
+def range_example(final_df, percentiles):
+    """The Total's first forecast week, its 80% range, and the scale that turns the percentiles into cases.
+    The scale is read back from the saved range (upper end = forecast + upper percentile x scale), so the example uses
+    exactly the numbers in the files."""
+    row = final_df[final_df["unique_id"] == "Total"].sort_values("ds").iloc[0]
+    group = percentiles.set_index("group").loc["Total"]
+    low_p, high_p = group["80% range lower percentile (0.1)"], group["80% range upper percentile (0.9)"]
+    scale = (row["hi80"] - row["forecast"]) / high_p
+    return {"week": int(row["week"]), "forecast": row["forecast"], "lo80": row["lo80"], "hi80": row["hi80"],
+            "low_p": low_p, "high_p": high_p, "scale": scale, "lo80_rebuilt": row["forecast"] + low_p * scale}
+
+
+def percentile_table(percentiles):
+    """The range recipe per group, rounded, for the help panel."""
+    cols = {"group": "Group", "80% range lower percentile (0.1)": "80% low", "80% range upper percentile (0.9)": "80% high",
+            "95% range lower percentile (0.025)": "95% low", "95% range upper percentile (0.975)": "95% high",
+            "errors used": "Errors used"}
+    return percentiles[list(cols)].rename(columns=cols).round(2)

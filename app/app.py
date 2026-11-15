@@ -99,6 +99,58 @@ def circle_legend():
     return ui.div(*[ui.span(mark, text, class_="me-3 small") for mark, text in items], class_="mt-1")
 
 
+def help_modal(vd, version):
+    """The "? Help" window: how to read every part of the app, with numbers from the files of the version on screen."""
+    ex = charts.range_example(vd.final, vd.percentiles)
+    lanes = ui.tags.ul(*[ui.tags.li(ui.span(style=f"display:inline-block;width:11px;height:11px;border-radius:50%;"
+                                                  f"background:{colour};margin-right:6px"), config.LANE_WORDS[lane])
+                         for lane, colour in config.LANE_COLOURS.items()])
+    recipe = charts.percentile_table(vd.percentiles).to_html(index=False, classes="table table-sm small", border=0,
+                                                             justify="left")      # headings line up with the numbers
+    section = lambda title, *body: ui.div(ui.h5(title, class_="mt-3"), *body)
+    return ui.modal(
+        section("The tree",
+                ui.p("Circles (or boxes) are the 283 series: Total > 3 categories > 8 sub-categories > 83 brands > 188 "
+                     "products. Click one to select it everywhere; click the selected one again to go back up. Circle size "
+                     "= square root of the 13-week forecast, so small products stay visible. Light blue = the path to your "
+                     "selection; a thick orange-red outline = a review flag (see the Flags tab). A product's colour is its lane:"),
+                lanes),
+        section("The 80% and 95% ranges",
+                ui.p(f"Each range comes from the models' real mistakes in the practice rounds cv1 + cv2: for each group, the "
+                     f"10% / 90% (and 2.5% / 97.5%) points of the errors, measured in units of the series' usual weekly change "
+                     f"(its scale). Example - the Total, week {ex['week']}: forecast {ex['forecast']:,.0f}, scale "
+                     f"{ex['scale']:,.0f} cases, so the 80% range is {ex['forecast']:,.0f} {ex['low_p']:+.2f} x {ex['scale']:,.0f} "
+                     f"to {ex['forecast']:,.0f} + {ex['high_p']:.2f} x {ex['scale']:,.0f} = {ex['lo80']:,.0f} to {ex['hi80']:,.0f}. "
+                     "The ranges reach further above the forecast than below, because in the practice rounds real sales "
+                     "went above the forecast by more than they went below it."),
+                ui.p(ui.strong("Ranges are per week. "), "Never add the 13 weekly ranges together to get a range for the "
+                     "13-week total - that would be far too wide. Judgement and stopped products have no range: a planner sets it."),
+                ui.HTML(recipe)),
+        section("Official (December cleaned) and With spikes",
+                ui.p("December 2025 had a one-off surge. The OFFICIAL forecast learned from sales in which the 84 product-weeks "
+                     "flagged as spikes in the 5 December weeks were replaced by that product's usual week (tested in Step 7: "
+                     "11.9% better on cv2), because July-October has no December. 'With spikes' learned from the sales exactly "
+                     "as recorded - it is shown for comparison only. "
+                     "The badge in the top bar always says which one is on screen."),
+                ui.p(f"On screen now: {config.VERSION_LABELS[version]}.", class_="text-muted small")),
+        section("The tests (why you can trust the models)",
+                ui.p("cv1 (learned weeks 1-27, tested on 28-40) and cv2 (1-40, tested on 41-53) chose the models; the backtest "
+                     "(learned 1-53, sealed on 6 Apr 2026, tested on 54-66) checked them once on weeks nobody had used. "
+                     "MASE = the average mistake divided by the series' usual week-to-week change in the weeks it learned "
+                     "from (FPP2 3.4): below 1 means the mistakes are smaller than that usual change. "
+                     "Bias = total forecast / total real sales: 1.00 is right, above 1 too high.")),
+        section("Challengers (not official)",
+                ui.p(f"Two other models (ARIMA + calendar, and the last-13-week average) were frozen for weeks 67-79 on "
+                     f"{config.CHALLENGER_FROZEN}. They were chosen after looking at weeks 54-66, so their backtest scores prove "
+                     "nothing yet. Step 10 compares all three with EABL's real weeks 67-79; the official method changes only "
+                     "if a challenger wins there.")),
+        section("Flags",
+                ui.p("A flag is a note from the notebook that a forecast needs a planner's look (for example: low confidence, "
+                     "set to 0 by reconciliation, new launch). A flag does not mean the forecast is wrong.")),
+        title="How to read this app", size="xl", easy_close=True, footer=ui.modal_button("Close"),
+    )
+
+
 
 def coming_soon(step, what):
     return ui.div(ui.p(ui.strong(f"Coming in Step {step}. "), what), class_="text-muted p-3")
@@ -176,6 +228,7 @@ def build_ui():
                               "67-79) is the fair test.", class_="text-muted small"),
                          ui.input_radio_buttons("challenger_rule", "Which series got the challenger models",
                                                 config.CHALLENGER_RULES, inline=True),
+                                                                         ui.input_switch("challenger_zoom", "Zoom in on the lines (axis fits the lines instead of starting at 0)"),
                          ui.output_ui("challenger_summary"),
                          ui.h6("Backtest (weeks 54-66): all three against real sales", class_="mt-3"),
                          output_widget("challenger_bt_chart"),
@@ -217,6 +270,8 @@ def build_ui():
                           class_="text-muted"),
                      ui.output_data_frame("explorer_grid"), value="explorer"),
         ui.nav_spacer(),
+        ui.nav_control(ui.input_action_button("help", "? Help", class_="btn-sm btn-outline-secondary me-2")),
+
         ui.nav_control(ui.output_ui("badge")),
         title=config.APP_TITLE, id="page", sidebar=sidebar, window_title=config.APP_TITLE,
         header=ui.TagList(ui.tags.script(src="echarts.min.js"), ui.tags.script(src="tree.js")),   # Step 16 circle tree
@@ -397,6 +452,12 @@ def server(input, output, session):
                 selected.set(product)
             ui.update_navset("page", selected="Forecast")
             await explorer_grid.update_cell_selection(None)   # un-select, so clicking the same row again works
+    # ---- Step 17: the help panel ----
+    @reactive.effect
+    @reactive.event(input.help)
+    def _show_help():
+        ui.modal_show(help_modal(version_data(), input.version()))
+
 
     # ---- Challengers (cell 9g) - NOT official ----
     def challenger_rows(part):                            # this series' rows, backtest ("bt") or frozen forecast ("fc")
@@ -419,11 +480,11 @@ def server(input, output, session):
 
     @render_plotly
     def challenger_bt_chart():
-        return charts.challenger_figure(challenger_rows("bt"), with_real=True)
+        return charts.challenger_figure(challenger_rows("bt"), with_real=True, zoom=input.challenger_zoom())
 
     @render_plotly
     def challenger_fc_chart():
-        return charts.challenger_figure(challenger_rows("fc"), with_real=False)
+        return charts.challenger_figure(challenger_rows("fc"), with_real=False, zoom=input.challenger_zoom())
 
     @render.data_frame
     def challenger_grid():
