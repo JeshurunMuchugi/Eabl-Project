@@ -99,3 +99,64 @@ def children_table(final_df, hierarchy, series_id, sku_names):
 def download_rows(final_df, series_ids):
     """The saved final-forecast rows for some series (for the download buttons) - exactly as in the CSV."""
     return final_df[final_df["unique_id"].isin(series_ids)].sort_values(["unique_id", "ds"])
+
+
+# ---- Step 12: the evidence tabs (cv1, cv2, backtest) ------------------------------------------------------
+def test_window_figure(actual, forecast, forecast_name, ranges=None, candidates=None, naive=None):
+    """One test window (13 weeks): real sales (black) against the forecast that was used (red).
+    Optional: the 80% / 95% ranges (shaded), every other candidate model (thin grey) and Naive (dotted grey).
+    `actual` and `forecast` need columns ds, week, value; `candidates` needs ds, model, forecast."""
+    fig = go.Figure()
+    if ranges is not None:
+        add_range(fig, ranges, "lo95", "hi95", BAND_95, "95% range")
+        add_range(fig, ranges, "lo80", "hi80", BAND_80, "80% range")
+    if candidates is not None and len(candidates):
+        for i, (model, rows) in enumerate(candidates.sort_values("ds").groupby("model", sort=True)):
+            fig.add_trace(go.Scatter(x=as_dates(rows["ds"]), y=rows["forecast"], mode="lines", name="Other candidate models",
+                                     legendgroup="candidates", showlegend=(i == 0), line=dict(color="#B8BEC7", width=1),
+                                     hovertemplate=f"{model}: %{{y:,.1f}}<extra></extra>"))
+    if naive is not None and len(naive):
+        fig.add_trace(go.Scatter(x=as_dates(naive["ds"]), y=naive["value"], mode="lines", name="Naive (benchmark)",
+                                 line=dict(color=config.BASE_COLOUR, width=1.4, dash="dot"),
+                                 hovertemplate="Naive: %{y:,.1f}<extra></extra>"))
+    fig.add_trace(go.Scatter(x=as_dates(actual["ds"]), y=actual["value"], mode="lines+markers", name="Real sales",
+                             line=dict(color=config.ACTUAL_COLOUR, width=2), marker=dict(size=6), customdata=actual["week"],
+                             hovertemplate="Week %{customdata}: %{y:,.1f} cases<extra>Real sales</extra>"))
+    fig.add_trace(go.Scatter(x=as_dates(forecast["ds"]), y=forecast["value"], mode="lines+markers", name=forecast_name,
+                             line=dict(color=config.FORECAST_COLOUR, width=2.4), marker=dict(size=6),
+                             customdata=forecast["week"],
+                             hovertemplate="Week %{customdata}: %{y:,.1f} cases<extra>Forecast</extra>"))
+    fig.update_layout(template="plotly_white", height=400, margin=dict(l=60, r=20, t=40, b=40), hovermode="x unified",
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0), yaxis_title="cases per week")
+    fig.update_yaxes(rangemode="tozero")
+    fig.update_xaxes(type="date", tickformat="%d %b\n%Y", showgrid=True, ticks="outside")
+    return fig
+
+
+def candidate_scores_table(score_rows, winner=None):
+    """Every candidate model's score for one series in one round, best (lowest MASE) first.
+    Copied from the notebook's saved scores (cell 9e) - nothing is re-scored."""
+    if score_rows.empty:
+        return None
+    table = score_rows[["model", "candidate_set", "MASE", "MAE", "WAPE", "RMSSE"]].copy()
+    table["candidate_set"] = table["candidate_set"].str.split(" ").str[0] + " " + table["candidate_set"].str.split(" ").str[1]
+    table["note"] = ""
+    table.loc[table["model"] == "Naive", "note"] = "benchmark"
+    if winner:
+        table.loc[table["model"] == winner, "note"] = "winner (both rounds, MASE)"
+    table.loc[table["model"] == "Zero", "note"] = "always 0 - comparison only"
+    table = table.sort_values("MASE", na_position="last")
+    table.insert(0, "rank", range(1, len(table) + 1))
+    return table.rename(columns={"model": "Model", "candidate_set": "Group", "note": "Note"}).round(3)
+
+
+def window_summary(chosen_rows):
+    """Scores of the forecast that was used in one practice round, from the saved columns (cell 9e):
+    MASE = mean |r| (r = scaled error the notebook saved); bias = sum forecast / sum real; share inside the ranges."""
+    real_sum = chosen_rows["y"].sum()
+    out = {"weeks": len(chosen_rows), "MASE": chosen_rows["r"].abs().mean() if chosen_rows["r"].notna().any() else None,
+           "bias": chosen_rows["chosen"].sum() / real_sum if real_sum > 0 else None}
+    for pct in ("80%", "95%"):
+        inside = chosen_rows[f"inside {pct}"].dropna()
+        out[f"inside {pct}"] = inside.astype(bool).mean() if len(inside) else None
+    return out

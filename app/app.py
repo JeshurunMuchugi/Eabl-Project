@@ -18,6 +18,7 @@ Then open http://127.0.0.1:8000 in your browser. Stop with Ctrl+C in the termina
 """
 from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_plotly
+import pandas as pd                                            
 
 import charts
 import config
@@ -116,11 +117,19 @@ def build_ui():
                          ui.output_ui("children_note"),
                          ui.output_data_frame("children_grid"),
                          value="final"),
-            ui.nav_panel(window_title("cv1", "Test cv1"), coming_soon(12, "Every candidate model vs real sales."), value="cv1"),
-            ui.nav_panel(window_title("cv2", "Test cv2"), coming_soon(12, "Chosen forecast vs real sales, with ranges."),
-                         value="cv2"),
-            ui.nav_panel(window_title("backtest", "Backtest"), coming_soon(12, "The sealed forecast vs real sales (Step 8)."),
-                         value="backtest"),
+                        ui.nav_panel(window_title("cv1", "Test cv1"),
+                         ui.output_ui("cv1_summary"), output_widget("cv1_chart"),
+                         ui.h6("Every candidate model in this round (lower MASE = better)", class_="mt-3"),
+                         ui.output_data_frame("cv1_scores"), value="cv1"),
+            ui.nav_panel(window_title("cv2", "Test cv2"),
+                         ui.output_ui("cv2_summary"), output_widget("cv2_chart"),
+                         ui.h6("Every candidate model in this round (lower MASE = better)", class_="mt-3"),
+                         ui.output_data_frame("cv2_scores"), value="cv2"),
+            ui.nav_panel(window_title("backtest", "Backtest"),
+                         ui.output_ui("backtest_summary"), output_widget("backtest_chart"),
+                         ui.p("The backtest forecast was made on 6 Apr 2026 from weeks 1-53 and sealed; weeks 54-66 were "
+                              "opened once, in Step 8.", class_="text-muted small"), value="backtest"),
+
             ui.nav_panel("Flags", coming_soon(15, "Review notes for this series and its children."), value="flags"),
             ui.nav_panel("Step 10", coming_soon("10 (later)", "EABL's real sales for weeks 67-79."), value="step10"),
             id="tabs", selected="final",
@@ -234,6 +243,115 @@ def server(input, output, session):
     def children_grid():
         table = charts.children_table(version_data().final, DATA["hierarchy"], selected(), sku_names())
         return None if table is None else render.DataGrid(table, width="100%")
+
+    # ---- Step 12: the evidence tabs ----
+    def practice(set_name):                               # the forecast used + real sales, one practice round
+        rows = version_data().practice_chosen
+        return rows[(rows["unique_id"] == selected()) & (rows["set"] == set_name)].sort_values("ds")
+
+    def practice_scores(set_name):
+        rows = version_data().practice_scores
+        return rows[(rows["unique_id"] == selected()) & (rows["set"] == set_name)]
+
+    def winner_of_series():
+        w = version_data().practice_winners
+        w = w[w["unique_id"] == selected()]
+        return None if w.empty else w["winner"].iloc[0]
+
+    def no_test_message(set_name):
+        first, last, learned = config.WINDOWS[set_name]
+        return ui.p(f"No {set_name} test for this series: in this round the models {learned}, and this series was "
+                    f"stopped, not yet on sale long enough, or set by judgement - so the notebook made no practice "
+                    f"forecast for weeks {first}-{last}.", class_="text-muted")
+
+    def practice_summary(set_name):
+        rows = practice(set_name)
+        if rows.empty:
+            return no_test_message(set_name)
+        s, scores = charts.window_summary(rows), practice_scores(set_name)
+        naive = scores.loc[scores["model"] == "Naive", "MASE"]
+        items = [pill(config.WINDOWS[set_name][2].capitalize()), pill(f"Forecast used: {rows['rule'].iloc[0]}")]
+        if s["MASE"] is not None:
+            items.append(pill(f"MASE {s['MASE']:.2f}" + (f"  (Naive {naive.iloc[0]:.2f})" if len(naive) else ""),
+                              "success" if len(naive) and s["MASE"] < naive.iloc[0] else "light"))
+        if s["bias"] is not None:
+            items.append(pill(f"Bias {s['bias']:.2f} (1.00 = right total)"))
+        for pct in ("80%", "95%"):
+            if s[f"inside {pct}"] is not None:
+                items.append(pill(f"Inside {pct} range: {s[f'inside {pct}']:.0%} of weeks"))
+        if winner_of_series():
+            items.append(pill(f"Winner over both rounds: {winner_of_series()}"))
+        return ui.div(*items, class_="mb-2")
+
+    def practice_chart(set_name, with_ranges):
+        rows = practice(set_name)
+        if rows.empty:
+            return None
+        cands = version_data().practice_forecasts
+        cands = cands[(cands["unique_id"] == selected()) & (cands["set"] == set_name)]
+        naive = cands[cands["model"] == "Naive"].drop_duplicates("ds").rename(columns={"forecast": "value"})
+        others = cands[~cands["model"].isin(["Naive", "Zero"])]
+        return charts.test_window_figure(rows.rename(columns={"y": "value"}), rows.rename(columns={"chosen": "value"}),
+                                         f"Forecast used ({rows['rule'].iloc[0]})",
+                                         ranges=rows if with_ranges else None, candidates=others, naive=naive)
+
+    @render.ui
+    def cv1_summary():
+        return practice_summary("cv1")
+
+    @render_plotly
+    def cv1_chart():
+        return practice_chart("cv1", with_ranges=False)
+
+    @render.data_frame
+    def cv1_scores():
+        table = charts.candidate_scores_table(practice_scores("cv1"), winner_of_series())
+        return None if table is None else render.DataGrid(table, width="100%")
+
+    @render.ui
+    def cv2_summary():
+        return practice_summary("cv2")
+
+    @render_plotly
+    def cv2_chart():
+        return practice_chart("cv2", with_ranges=True)                 # cv2 ranges were built from cv1's errors
+
+    @render.data_frame
+    def cv2_scores():
+        table = charts.candidate_scores_table(practice_scores("cv2"), winner_of_series())
+        return None if table is None else render.DataGrid(table, width="100%")
+
+    def backtest_rows():
+        rows = version_data().step8
+        return rows[rows["unique_id"] == selected()].sort_values("ds")
+
+    @render.ui
+    def backtest_summary():
+        rows, all_rows = backtest_rows(), version_data().step8
+        scale = rows["scale (real weeks 1-53)"].iloc[0]
+        mase = rows["series MASE (weeks 54-66)"].iloc[0]
+        naive_mase = (rows["actual"] - rows["Naive"]).abs().mean() / scale if scale > 0 else None
+        level = DATA["hierarchy"].level[selected()]
+        level_mase = all_rows[all_rows["level"] == level].drop_duplicates("unique_id")["series MASE (weeks 54-66)"].mean()
+        items = [pill("Learned weeks 1-53 (sealed 6 Apr 2026)"), pill(f"Method: {rows['base method'].iloc[0]}")]
+        if pd.notna(mase):
+            items.append(pill(f"MASE {mase:.2f}" + (f"  (Naive {naive_mase:.2f})" if naive_mase is not None else ""),
+                              "success" if naive_mase is not None and mase < naive_mase else "light"))
+            items.append(pill(f"{level} average MASE {level_mase:.2f}"))
+        if rows["actual"].sum() > 0:
+            items.append(pill(f"Bias {rows['forecast'].sum() / rows['actual'].sum():.2f} (1.00 = right total)"))
+        for pct in ("80%", "95%"):
+            inside = rows[f"inside {pct}"].dropna()
+            if len(inside) and rows["lo80"].notna().any():
+                items.append(pill(f"Inside {pct} range: {inside.astype(bool).mean():.0%} of weeks"))
+        return ui.div(*items, class_="mb-2")
+
+    @render_plotly
+    def backtest_chart():
+        rows = backtest_rows()
+        return charts.test_window_figure(rows.rename(columns={"actual": "value"}), rows.rename(columns={"forecast": "value"}),
+                                         "Backtest forecast (sealed)", ranges=rows,
+                                         naive=rows[["ds", "week", "Naive"]].rename(columns={"Naive": "value"}))
 
     @render.download_button(filename=lambda: f"{file_safe(selected())}_{input.version()}_weeks67-79.csv")
     def download_series():
