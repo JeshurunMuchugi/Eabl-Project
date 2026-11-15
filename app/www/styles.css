@@ -1,0 +1,55 @@
+/* styles.css - the look of the EABL Product Forecaster (Step 17b), taken from the mock-up.
+   Only colours, fonts and spacing: nothing here changes a number or what the app does.
+   The fonts load from Google Fonts when there is internet; without it the app falls back to the system fonts. */
+
+:root {
+  --bar: #3c4a5c;            /* dark top bar and title strip */
+  --bar-ink: #f3f5f8;        /* text on the dark bar */
+  --ink: #1d2430;            /* main text */
+  --muted: #5b6474;          /* secondary text */
+  --line: #dde1e8;           /* borders */
+  --accent: #2a6fb0;         /* active tab, focus ring */
+  --s1: 4px; --s2: 8px; --s3: 16px; --s4: 24px;      /* one spacing scale for the whole app */
+  --f-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body { font-family: var(--f-body); color: var(--ink); }
+h1, h2, h3, h4, h5, h6, .card-header, .navbar-brand { font-family: var(--f-display); letter-spacing: .01em; }
+h5 { font-size: 1.35rem; font-weight: 600; }
+h6 { font-size: 1.1rem; font-weight: 600; }
+
+/* ---- top bar: dark, like the mock-up ---- */
+.navbar { background-color: var(--bar) !important; border-bottom: 0; }
+.navbar .navbar-brand { color: var(--bar-ink) !important; font-size: 1.45rem; font-weight: 600; }
+.navbar .nav-link { color: var(--bar-ink) !important; opacity: .72; font-family: var(--f-display); font-size: 1.1rem; }
+.navbar .nav-link.active, .navbar .nav-link:hover { opacity: 1; }
+.navbar .nav-link.active { box-shadow: inset 0 -3px 0 var(--bar-ink); }
+.navbar #help { color: var(--bar-ink); border-color: rgba(255, 255, 255, .55); }
+.navbar #help:hover { background: rgba(255, 255, 255, .14); }
+.navbar .navbar-toggler { border-color: rgba(255, 255, 255, .55); }
+.navbar .navbar-toggler-icon { filter: invert(1); }
+
+/* ---- title strip above the tree: same dark as the bar ---- */
+#title_strip > div { background-color: var(--bar) !important; font-family: var(--f-display); font-size: 1.15rem; }
+
+/* ---- cards and spacing ---- */
+.card { border-color: var(--line); margin-bottom: var(--s4); }
+.card-header { font-size: 1.1rem; font-weight: 600; color: var(--muted); background: #f5f6f8; }
+
+/* ---- the tabs under the tree: one line that scrolls sideways, never two lines ---- */
+.card .nav-underline { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.card .nav-underline .nav-link { white-space: nowrap; font-family: var(--f-display); font-size: 1.05rem;
+                                 color: var(--muted); padding: var(--s2) var(--s3); }
+.card .nav-underline .nav-link.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+
+/* ---- pills: smaller and lighter than Bootstrap's default badge ---- */
+.badge.rounded-pill.fs-6 { font-size: .85rem !important; font-weight: 400; padding: var(--s1) 10px;
+                           border-color: var(--line) !important; color: var(--ink); }
+
+/* ---- left panel ---- */
+.sidebar h5 { font-size: 1.4rem; }
+.sidebar .shiny-input-container { margin-bottom: var(--s3); }
+
+/* ---- keyboard focus stays visible everywhere ---- */
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

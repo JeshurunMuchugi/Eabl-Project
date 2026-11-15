@@ -274,7 +274,10 @@ def build_ui():
 
         ui.nav_control(ui.output_ui("badge")),
         title=config.APP_TITLE, id="page", sidebar=sidebar, window_title=config.APP_TITLE,
-        header=ui.TagList(ui.tags.script(src="echarts.min.js"), ui.tags.script(src="tree.js")),   # Step 16 circle tree
+        header=ui.TagList(ui.tags.script(src="echarts.min.js"), ui.tags.script(src="tree.js"),   # Step 16 circle tree
+                          ui.tags.link(rel="stylesheet", href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:"
+                                       "wght@500;600&family=Source+Sans+3:wght@400;600&display=swap"),   # Step 17b fonts
+                          ui.tags.link(rel="stylesheet", href="styles.css")),                  # Step 17b look (www/)
 
     )
 
