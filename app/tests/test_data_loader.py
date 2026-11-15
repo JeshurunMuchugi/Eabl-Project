@@ -233,3 +233,22 @@ def test_flags_and_explorer(data):
     assert ex["Lane"].value_counts().to_dict() == vd.routing["lane"].value_counts().to_dict()
     total = vd.final.groupby("unique_id")["forecast"].sum()["Total"]
     assert ex["13-week forecast (cases)"].sum() == pytest.approx(total, abs=1)              # products add up to the Total
+
+
+# ---- 13. Challengers (cell 9g, NOT official): the app shows exactly what the notebook printed ------------------
+def test_challengers_match_notebook(data):
+    vd = data["versions"]["dec_cleaned"]
+    t = charts.challenger_level_table({"normal": vd.challengers_bt_normal, "option2": vd.challengers_bt_option2},
+                                      vd.step8, config.LEVELS).set_index(["Rule", "Level"])
+    normal, option2 = (config.CHALLENGER_RULES[r] for r in ("normal", "option2"))
+    assert t.loc[(normal, "Total")].tolist() == pytest.approx([0.629, 0.521, 0.540], abs=0.0005)      # 9g printed these
+    assert t.loc[(option2, "Brand")].tolist() == pytest.approx([0.790, 0.833, 0.779], abs=0.0005)     # 9g option 2
+    switched = {r: getattr(vd, f"challengers_fc_{r}").query("`model used` == 'challenger'")["unique_id"].nunique()
+                for r in config.CHALLENGER_RULES}
+    assert switched == {"normal": 210, "option2": 195}
+    brandy = vd.challengers_bt_normal.query("unique_id == 'Spirits/Mainstream/Chrome Brandy'")
+    assert brandy["model used"].eq("challenger").all() and charts.challenger_used(brandy).startswith("kept")  # label fixed
+    with pytest.raises(dl.DataCheckError):                                              # official columns must match
+        broken = {k: getattr(vd, k) for k in dl.NEEDED_COLUMNS}
+        broken["challengers_fc_normal"] = broken["challengers_fc_normal"].assign(**{"official forecast": lambda d: d["official forecast"] + 1})
+        dl.check_challengers(broken, data["hierarchy"])

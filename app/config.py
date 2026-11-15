@@ -40,7 +40,13 @@ FILES = {
     "practice_winners":        (OUT_DIR, "F1_practice_winners_{version}.csv"),                 # Step 9, cell 9e
     "practice_reconciliation": (OUT_DIR, "F1_practice_reconciliation_{version}_cv2.csv"),      # Step 9, cell 9e
     "practice_coverage":       (OUT_DIR, "F1_practice_range_coverage_{version}_cv2.csv"),
-    "history_forecast":        (OUT_DIR, "F1_history_and_forecast_{version}_weeks1-79.csv"),   # Step 9, cell 9f
+    "history_forecast":        (OUT_DIR, "F1_history_and_forecast_{version}_weeks1-79.csv"), 
+          # challengers - NOT official (Step 9, cells 9g = normal and 9g option 2)
+    "challengers_bt_normal":   (OUT_DIR, "F1_challengers_backtest_{version}_weeks54-66.csv"),
+    "challengers_fc_normal":   (OUT_DIR, "F1_challengers_forecast_{version}_weeks67-79.csv"),
+    "challengers_bt_option2":  (OUT_DIR, "F1_challengers_backtest_{version}_weeks54-66_option2.csv"),
+    "challengers_fc_option2":  (OUT_DIR, "F1_challengers_forecast_{version}_weeks67-79_option2.csv"),
+  # Step 9, cell 9f
 # Step 9, cell 9e
 }
 SHARED_FILES = ["hierarchy", "actuals"]                   # every other key has one file per version
@@ -102,6 +108,15 @@ PATH_FILL = "#B7C9E2"                       # circles on the selected path in th
 ACTUAL_COLOUR = "#1D2430"                   # real sales line
 FORECAST_COLOUR = "#C0392B"                 # forecast line
 BASE_COLOUR = "#7A8089"                     # base forecast (before reconciliation), dashed
+# ---- Challengers (cell 9g) - NOT official; judged against the official forecast in Step 10 ----------------
+CHALLENGER_RULES = {                        # which series the challenger models were used for
+    "normal": "Normal (210 series)",
+    "option2": "Option 2 (195 - sparse brands keep their model)",
+}
+CHALLENGER_MODELS = ["ARIMA + calendar", "last-13-week average"]
+CHALLENGER_COLOURS = {"official": "#C0392B", "ARIMA + calendar": "#009E73", "last-13-week average": "#56B4E9"}
+CHALLENGER_FROZEN = "15 Nov 2026"          # the day cell 9g froze the challengers' weeks 67-79 forecasts
+
 
 # ---- Text ------------------------------------------------------------------------------------------------
 APP_TITLE = "EABL Product Forecaster"

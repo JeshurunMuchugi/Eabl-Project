@@ -115,7 +115,12 @@ class VersionData:
     practice_winners: pd.DataFrame         # winner per series (cell 9e)
     practice_reconciliation: pd.DataFrame  # why MinT (cell 9e)
     practice_coverage: pd.DataFrame    
-    history_forecast: pd.DataFrame         # weeks 1-66 the models learned from + weeks 67-79 forecast (cell 9f)
+    history_forecast: pd.DataFrame   
+    challengers_bt_normal: pd.DataFrame    # challengers, NOT official (cell 9g): backtest 54-66, 210 series switched
+    challengers_fc_normal: pd.DataFrame    # ... frozen forecast 67-79, 210 series switched
+    challengers_bt_option2: pd.DataFrame   # ... backtest 54-66, 195 switched (sparse brands keep their model)
+    challengers_fc_option2: pd.DataFrame   # ... frozen forecast 67-79, 195 switched
+      # weeks 1-66 the models learned from + weeks 67-79 forecast (cell 9f)
     # cv2 range coverage (cell 9e)
 
 
@@ -133,9 +138,16 @@ NEEDED_COLUMNS = {
     "practice_reconciliation": ["method", "chosen", "version"],
     "practice_coverage": ["group", "80% coverage", "95% coverage", "version"],
     "history_forecast": ["unique_id", "ds", "week", "part", "value", "recorded", "changed by cleaning", "version"],
+        **{f"challengers_{part}_{rule}": ["level", "unique_id", "ds", "week", "model used", "official forecast"]
+       + [f"{m} {col}" for m in config.CHALLENGER_MODELS for col in ("base", "forecast")]
+       + (["real sales"] if part == "bt" else []) + ["version", "role"]
+       for part in ("bt", "fc") for rule in config.CHALLENGER_RULES},
+
 
 }
-WEEKLY_FILES = ["final", "backtest", "step8", "practice_forecasts", "practice_chosen", "history_forecast"]   # have a ds column
+WEEKLY_FILES = ["final", "backtest", "step8", "practice_forecasts", "practice_chosen", "history_forecast",
+                "challengers_bt_normal", "challengers_fc_normal", "challengers_bt_option2", "challengers_fc_option2"]   # have a ds column
+
 HISTORY_PART = "history (what the models learned from)"     # the "part" label cell 9f gives weeks 1-66
 
 
@@ -196,6 +208,27 @@ def check_history_forecast(hf, version, final, actuals, hierarchy):
     if not np.allclose(fc["value"], fc["forecast"], atol=1e-6):
         raise DataCheckError("history_forecast: its forecast part differs from the final forecast file (cell 9d).")
 
+def check_challengers(tables, hierarchy):
+    """Cell 9g's files: 283 x 13 rows, labelled not official, every level adds up, and their OFFICIAL columns are exactly
+    the official files - so the challenger tab can never show a different official number from the rest of the app."""
+    for rule in config.CHALLENGER_RULES:
+        for part, window, official_key in [("bt", "backtest", "backtest"), ("fc", "final", "final")]:
+            key = f"challengers_{part}_{rule}"
+            df = tables[key]
+            check_forecast_table(df, key, *config.WINDOWS[window][:2])
+            if set(df["role"]) != {"challenger - not official"}:
+                raise DataCheckError(f"{key}: role must be 'challenger - not official', found {sorted(set(df['role']))}.")
+            for model in config.CHALLENGER_MODELS:
+                check_adds_up(df, key, f"{model} forecast", hierarchy)
+            same = df.merge(tables[official_key][["unique_id", "ds", "forecast"]], on=["unique_id", "ds"], validate="one_to_one")
+            if not np.allclose(same["official forecast"], same["forecast"], atol=1e-6):
+                raise DataCheckError(f"{key}: its 'official forecast' differs from the {official_key} file.\n"
+                                     f"-> Re-run notebook cell 9g (or 9g option 2) for this version.")
+        real = tables[f"challengers_bt_{rule}"].merge(tables["step8"][["unique_id", "ds", "actual"]], on=["unique_id", "ds"])
+        if not np.allclose(real["real sales"], real["actual"], atol=1e-6):
+            raise DataCheckError(f"challengers_bt_{rule}: its 'real sales' differ from the Step 8 file.")
+
+
 
 def load_version(version, hierarchy, actuals):
     tables = {}
@@ -227,6 +260,8 @@ def load_version(version, hierarchy, actuals):
     if tables["practice_reconciliation"]["chosen"].sum() != 1:
         raise DataCheckError("practice_reconciliation: exactly one method must be marked as chosen.")
     check_history_forecast(tables["history_forecast"], version, tables["final"], actuals, hierarchy)
+    check_challengers(tables, hierarchy)
+
     return VersionData(version=version, **tables)
 
 

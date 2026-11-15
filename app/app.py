@@ -169,6 +169,19 @@ def build_ui():
                          ui.p("Review notes the notebook wrote for this series and its children. A flag does not mean the "
                               "forecast is wrong - it means a planner should look at it before using it.", class_="text-muted small"),
                          ui.output_ui("flags_note"), ui.output_data_frame("flags_grid"), value="flags"),
+                        ui.nav_panel("Challengers (not official)",
+                         ui.p("Two other models, tested on the backtest weeks and frozen for weeks 67-79 on "
+                              f"{config.CHALLENGER_FROZEN} (cell 9g). They are NOT the forecast. They were picked after looking at "
+                              "weeks 54-66, so the backtest below cannot prove they are better; Step 10 (EABL's real weeks "
+                              "67-79) is the fair test.", class_="text-muted small"),
+                         ui.input_radio_buttons("challenger_rule", "Which series got the challenger models",
+                                                config.CHALLENGER_RULES, inline=True),
+                         ui.output_ui("challenger_summary"),
+                         ui.h6("Backtest (weeks 54-66): all three against real sales", class_="mt-3"),
+                         output_widget("challenger_bt_chart"),
+                         ui.h6("Frozen forecast (weeks 67-79): to be judged in Step 10", class_="mt-3"),
+                         output_widget("challenger_fc_chart"), value="challengers"),
+
             ui.nav_panel("Step 10", coming_soon("10 (later)", "EABL's real sales for weeks 67-79."), value="step10"),
             id="tabs", selected="final",
         ),
@@ -191,6 +204,12 @@ def build_ui():
             ui.card(ui.card_header("4. Do the ranges work? Share of real weeks inside them (targets: 80% and 95%)"),
                     ui.output_data_frame("coverage_grid")),
             ui.card(ui.card_header("5. Known weak spots"), ui.output_ui("weak_spots")),
+                        ui.card(ui.card_header("6. Challengers (NOT official): backtest weeks 54-66, average MASE by level (lower is better)"),
+                    ui.output_data_frame("challenger_grid"), ui.output_ui("challenger_totals"),
+                    ui.p("These two models were chosen after looking at weeks 54-66, so this table cannot prove they are "
+                         "better. Their weeks 67-79 forecasts were frozen and will be judged in Step 10.",
+                         class_="text-muted small")),
+
         ),
         ui.nav_panel("Product explorer",
                      ui.p("All 188 products for the version chosen in the left panel. Type in the boxes under the column "
@@ -378,6 +397,51 @@ def server(input, output, session):
                 selected.set(product)
             ui.update_navset("page", selected="Forecast")
             await explorer_grid.update_cell_selection(None)   # un-select, so clicking the same row again works
+
+    # ---- Challengers (cell 9g) - NOT official ----
+    def challenger_rows(part):                            # this series' rows, backtest ("bt") or frozen forecast ("fc")
+        df = getattr(version_data(), f"challengers_{part}_{input.challenger_rule()}")
+        return charts.rows_for(df, selected())
+
+    @render.ui
+    def challenger_summary():
+        bt, fc = challenger_rows("bt"), challenger_rows("fc")
+        scale = version_data().step8.set_index("unique_id").loc[selected(), "scale (real weeks 1-53)"].iloc[0]
+        scores = charts.challenger_scores(bt, scale)
+        items = [pill(f"This series {charts.challenger_used(bt)}")]
+        for name in charts.CHALLENGER_LINES:
+            s, label = scores[name], ("Official" if name == "official" else name)
+            text = f"{label}: MASE {s['MASE']:.2f}" if s["MASE"] is not None else f"{label}: MASE -"
+            text += f", bias {s['bias']:.2f}" if s["bias"] is not None else ""
+            text += f", weeks 67-79 total {fc[f'{name} forecast'].sum():,.1f}"
+            items.append(pill(text))
+        return ui.div(*items, class_="mb-2")
+
+    @render_plotly
+    def challenger_bt_chart():
+        return charts.challenger_figure(challenger_rows("bt"), with_real=True)
+
+    @render_plotly
+    def challenger_fc_chart():
+        return charts.challenger_figure(challenger_rows("fc"), with_real=False)
+
+    @render.data_frame
+    def challenger_grid():
+        vd = version_data()
+        table = charts.challenger_level_table({"normal": vd.challengers_bt_normal, "option2": vd.challengers_bt_option2},
+                                              vd.step8, config.LEVELS)
+        return render.DataGrid(table, width="100%")
+
+    @render.ui
+    def challenger_totals():
+        vd, items = version_data(), []
+        for rule, label in config.CHALLENGER_RULES.items():
+            bt = getattr(vd, f"challengers_bt_{rule}").query("unique_id == 'Total'")
+            fc = getattr(vd, f"challengers_fc_{rule}").query("unique_id == 'Total'")
+            parts = [f"{'official' if n == 'official' else n} {bt[f'{n} forecast'].sum() / bt['real sales'].sum():.3f} / "
+                     f"{fc[f'{n} forecast'].sum():,.0f}" for n in charts.CHALLENGER_LINES]
+            items.append(ui.tags.li(f"{label} - Total bias (1.00 = right) / frozen weeks 67-79 total: " + "  |  ".join(parts)))
+        return ui.tags.ul(*items, class_="small mt-2")
 
 
     # ---- Step 13: the Model evidence page ----

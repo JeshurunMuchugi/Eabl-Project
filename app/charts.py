@@ -297,3 +297,61 @@ def explorer_table(final_df, routing, hierarchy):
                      "13-week forecast (cases)": round(float(totals[pid]), 1),
                      "Flags": len(split_flags(first.at[pid, "flag list"])), "id": pid})
     return pd.DataFrame(rows)
+
+
+# ---- Challengers (cell 9g) - NOT official ----
+CHALLENGER_LINES = ["official"] + config.CHALLENGER_MODELS            # the three forecasts compared
+
+
+def challenger_figure(rows, with_real):
+    """Official forecast vs the two challengers for one series; with_real adds the real sales (backtest weeks 54-66)."""
+    fig = go.Figure()
+    x = as_dates(rows["ds"])
+    if with_real:
+        fig.add_trace(go.Scatter(x=x, y=rows["real sales"], name="Real sales", mode="lines+markers",
+                                 line=dict(color=config.ACTUAL_COLOUR, width=2), marker=dict(size=6)))
+    for name in CHALLENGER_LINES:
+        fig.add_trace(go.Scatter(x=x, y=rows[f"{name} forecast"], name=name.capitalize() if name == "official" else name,
+                                 mode="lines+markers", marker=dict(size=5),
+                                 line=dict(color=config.CHALLENGER_COLOURS[name], width=3 if name == "official" else 2,
+                                           dash=None if name == "official" else "dash")))
+    fig.update_layout(height=340, margin=dict(l=56, r=16, t=30, b=36), template="plotly_white", hovermode="x unified",
+                      legend=dict(orientation="h", y=1.12), yaxis=dict(title="cases per week", rangemode="tozero"),
+                      xaxis=dict(type="date"))                         # from 0, like the other forecast charts
+    return fig
+
+
+def challenger_scores(rows, scale):
+    """MASE (scale = mean weekly change of real weeks 1-53, as Step 8) and bias of each forecast, one series, weeks 54-66."""
+    real = rows["real sales"]
+    out = {}
+    for name in CHALLENGER_LINES:
+        f = rows[f"{name} forecast"]
+        out[name] = {"MASE": (real - f).abs().mean() / scale if scale > 0 else None,
+                     "bias": f.sum() / real.sum() if real.sum() > 0 else None}
+    return out
+
+
+def challenger_used(rows):
+    """In words: did this series get the challenger models, or keep its official method?"""
+    if (rows["model used"] != "challenger").all():
+        return "kept its official method (stopped, judgement, intermittent or sparse - see the Final forecast tab)"
+    same = all((rows[f"{m} base"] - rows["official base"]).abs().max() < 1e-9 for m in config.CHALLENGER_MODELS)
+    if same:                                                   # 9g labelled it "challenger" but had nothing to fit
+        return "kept its official forecast (the challengers had nothing to learn from, so cell 9g used the official base)"
+    return "used the challenger models"
+
+
+def challenger_level_table(bt_by_rule, step8, levels):
+    """Average backtest MASE per level, official vs each challenger, for each rule (same series as Step 8 scores)."""
+    scale = step8.drop_duplicates("unique_id").set_index("unique_id")["scale (real weeks 1-53)"]
+    rows = []
+    for rule, bt in bt_by_rule.items():
+        for (level, sid), g in bt.groupby(["level", "unique_id"]):
+            s = challenger_scores(g, scale[sid])
+            if s["official"]["MASE"] is not None:
+                rows.append({"Rule": config.CHALLENGER_RULES[rule], "Level": level, **{n: s[n]["MASE"] for n in CHALLENGER_LINES}})
+    table = pd.DataFrame(rows).groupby(["Rule", "Level"], sort=False)[CHALLENGER_LINES].mean().reset_index()
+    table["order"] = table["Level"].map({lv: i for i, lv in enumerate(levels)})
+    table = table.sort_values(["Rule", "order"], kind="stable").drop(columns="order")
+    return table.rename(columns={"official": "Official MASE", **{m: f"{m} MASE" for m in config.CHALLENGER_MODELS}}).round(3)
