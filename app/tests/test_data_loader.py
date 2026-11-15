@@ -149,3 +149,23 @@ def test_check_catches_cleaning_outside_december(data):
     broken.loc[rows, "changed by cleaning"] = True
     with pytest.raises(dl.DataCheckError):
         dl.check_history_forecast(broken, "dec_cleaned", vd.final, data["actuals"], h)
+
+
+# ---- 9. Model evidence page: its summaries agree with what the notebook found (Step 8 / cell 9e) ----------
+import charts                                                                     # noqa: E402
+
+
+def test_model_evidence_summaries(data):
+    vd = data["versions"]["dec_cleaned"]
+    acc = charts.accuracy_by_level(vd, config.LEVELS).set_index(["Test", "Level"])
+    total_bt = acc.loc[(charts.TESTS["backtest"], "Total")]
+    assert total_bt["Bias (1.00 = right total)"] == pytest.approx(1.059, abs=0.001)            # Step 8: +5.9% too high
+    assert total_bt["Naive MASE (same series)"] < total_bt["MASE"]                              # Step 8: Naive won at Total
+    cov = charts.coverage_table(vd, config.LEVELS)
+    bt = vd.step8[vd.step8["lo80"].notna()]
+    assert bt["inside 80%"].astype(bool).mean() == pytest.approx(0.836, abs=0.001)             # Step 8: 0.84 / 0.96
+    assert bt["inside 95%"].astype(bool).mean() == pytest.approx(0.960, abs=0.001)
+    assert len(cov) == len(vd.practice_coverage) + len(config.LEVELS)
+    recon = charts.reconciliation_table(vd.practice_reconciliation)
+    assert recon.loc[recon["chosen"] == "✓ chosen", "Method"].tolist() == ["MinT shrink"]
+    assert charts.winners_table(vd.practice_winners, config.LEVELS)["series"].sum() == len(vd.practice_winners)

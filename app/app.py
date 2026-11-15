@@ -137,7 +137,23 @@ def build_ui():
     )
     return ui.page_navbar(
         forecast_page,
-        ui.nav_panel("Model evidence", coming_soon(13, "Winners, accuracy per window, why MinT, do the ranges work.")),
+        ui.nav_panel(
+            "Model evidence",
+            ui.p("Do the models work? All series at once, for the version chosen in the left panel. cv1 and cv2 are the "
+                 "practice rounds used to choose the models; the backtest is the sealed test (Step 8).", class_="text-muted"),
+            ui.card(ui.card_header("1. Accuracy in each test, by level (MASE: lower is better)"),
+                    output_widget("accuracy_chart"), ui.output_data_frame("accuracy_grid"),
+                    ui.p("cv1 / cv2 score the chosen base forecasts (before reconciliation); the backtest scores the final "
+                         "reconciled forecast. Naive is compared on the same series. Bias = total forecast / total real.",
+                         class_="text-muted small")),
+            ui.card(ui.card_header("2. Which standard models won (picked on MASE over cv1 + cv2)"),
+                    ui.output_data_frame("winners_grid")),
+            ui.card(ui.card_header("3. Why MinT: making all levels add up, scored on cv2 (MASE, lower is better)"),
+                    ui.output_data_frame("recon_grid")),
+            ui.card(ui.card_header("4. Do the ranges work? Share of real weeks inside them (targets: 80% and 95%)"),
+                    ui.output_data_frame("coverage_grid")),
+            ui.card(ui.card_header("5. Known weak spots"), ui.output_ui("weak_spots")),
+        ),
         ui.nav_panel("Product explorer", coming_soon(15, "All 188 products with their labels, lane and method.")),
         ui.nav_spacer(),
         ui.nav_control(ui.output_ui("badge")),
@@ -243,6 +259,53 @@ def server(input, output, session):
     def children_grid():
         table = charts.children_table(version_data().final, DATA["hierarchy"], selected(), sku_names())
         return None if table is None else render.DataGrid(table, width="100%")
+    # ---- Step 13: the Model evidence page ----
+    @reactive.calc
+    def accuracy():
+        return charts.accuracy_by_level(version_data(), config.LEVELS)
+
+    @render_plotly
+    def accuracy_chart():
+        return charts.accuracy_figure(accuracy(), config.LEVELS)
+
+    @render.data_frame
+    def accuracy_grid():
+        return render.DataGrid(accuracy(), width="100%")
+
+    @render.data_frame
+    def winners_grid():
+        return render.DataGrid(charts.winners_table(version_data().practice_winners, config.LEVELS), width="100%")
+
+    @render.data_frame
+    def recon_grid():
+        return render.DataGrid(charts.reconciliation_table(version_data().practice_reconciliation), width="100%")
+
+    @render.data_frame
+    def coverage_grid():
+        return render.DataGrid(charts.coverage_table(version_data(), config.LEVELS), width="100%")
+
+    @render.ui
+    def weak_spots():
+        acc = accuracy().set_index(["Test", "Level"])
+        total_bt = acc.loc[(charts.TESTS["backtest"], "Total")]
+        sparse = version_data().practice_coverage.set_index("group")
+        launches = int((version_data().routing["lane"] == "judgement (new launch)").sum())
+        items = [
+            f"The official backtest forecast was {total_bt['Bias (1.00 = right total)'] - 1:+.1%} too high in total on the sealed weeks "
+            f"54-66 (bias {total_bt['Bias (1.00 = right total)']:.3f}).",
+            f"At the Total, Naive did {'better' if total_bt['MASE'] > total_bt['Naive MASE (same series)'] else 'worse'} "
+            f"than the model in the backtest (MASE {total_bt['Naive MASE (same series)']:.2f} vs {total_bt['MASE']:.2f}).",
+            "cv1's test weeks (28-40) contain the December 2025 spike (week 38), so every model scored badly there; "
+            "compare cv2 and the backtest for normal weeks.",
+        ]
+        if "Brand (sparse)" in sparse.index:
+            items.append(f"Sparse-brand ranges are too narrow: on cv2 only {sparse.loc['Brand (sparse)', '80% coverage']:.0%} "
+                         f"of real weeks fell inside the 80% range.")
+        items.append(f"{launches} new-launch products are forecast by judgement: they had too little history to test.")
+        items.append("Products with a short history (AICc lane) did worse than Naive in Step 8. Improvements are planned "
+                     "for Step 10, judged on EABL's real weeks 67-79.")
+        return ui.tags.ul(*[ui.tags.li(item) for item in items])
+
 
     # ---- Step 12: the evidence tabs ----
     def practice(set_name):                               # the forecast used + real sales, one practice round

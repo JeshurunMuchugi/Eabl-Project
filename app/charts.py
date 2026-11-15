@@ -160,3 +160,88 @@ def window_summary(chosen_rows):
         inside = chosen_rows[f"inside {pct}"].dropna()
         out[f"inside {pct}"] = inside.astype(bool).mean() if len(inside) else None
     return out
+
+
+# ---- Step 13: the Model evidence page (all series at once) -----------------------------------------------
+TESTS = {"cv1": "cv1 (weeks 28-40)", "cv2": "cv2 (weeks 41-53)", "backtest": "backtest (weeks 54-66)"}
+
+
+def accuracy_by_level(vd, levels):
+    """Average MASE per level in each test, next to Naive on the SAME series, and the pooled bias.
+    cv1 / cv2: the chosen base forecast (before reconciliation), from cell 9e; backtest: the final reconciled
+    forecast, from Step 8.  Only summarises saved numbers - nothing is re-forecast."""
+    rows = []
+    for test in ("cv1", "cv2"):
+        ch = vd.practice_chosen[vd.practice_chosen["set"] == test]
+        per = ch.groupby(["level", "unique_id"]).agg(mase=("r", lambda r: r.abs().mean()), fc=("chosen", "sum"), real=("y", "sum"))
+        naive = vd.practice_scores[(vd.practice_scores["set"] == test) & (vd.practice_scores["model"] == "Naive")]
+        per = per.join(naive.set_index(["level", "unique_id"])["MASE"].rename("naive"))
+        rows.append(per.reset_index().assign(test=test))
+    s8 = vd.step8
+    per = s8.groupby(["level", "unique_id"]).agg(mase=("series MASE (weeks 54-66)", "first"), fc=("forecast", "sum"),
+                                                 real=("actual", "sum"), scale=("scale (real weeks 1-53)", "first"))
+    naive_err = (s8["actual"] - s8["Naive"]).abs().groupby([s8["level"], s8["unique_id"]]).mean()
+    per["naive"] = naive_err / per["scale"].where(per["scale"] > 0)
+    rows.append(per.drop(columns="scale").reset_index().assign(test="backtest"))
+    per = pd.concat(rows, ignore_index=True)
+    out = []
+    for (test, level), g in per.groupby(["test", "level"]):
+        both = g.dropna(subset=["mase", "naive"])
+        out.append({"Test": TESTS[test], "Level": level, "Series": len(g),
+                    "MASE": both["mase"].mean(), "Naive MASE (same series)": both["naive"].mean(),
+                    "Bias (1.00 = right total)": g["fc"].sum() / g["real"].sum() if g["real"].sum() > 0 else None})
+    table = pd.DataFrame(out)
+    table["Beats Naive?"] = (table["MASE"] < table["Naive MASE (same series)"]).map({True: "yes", False: "no"})
+    order = {name: i for i, name in enumerate(list(TESTS.values()) + list(levels))}       # cv1, cv2, backtest; Total ... Product
+    table = table.sort_values(["Test", "Level"], key=lambda col: col.map(order))
+    return table.round(3).reset_index(drop=True)
+
+
+def accuracy_figure(table, levels):
+    """MASE as a share of Naive's MASE (same series): below 1.0 = the models beat Naive."""
+    fig = go.Figure()
+    colours = {"cv1 (weeks 28-40)": "#9BB7D4", "cv2 (weeks 41-53)": "#4A7FB5", "backtest (weeks 54-66)": "#1F3A5F"}
+    for test, colour in colours.items():
+        rows = table[table["Test"] == test].set_index("Level").reindex(levels)
+        ratio = rows["MASE"] / rows["Naive MASE (same series)"]
+        fig.add_trace(go.Bar(x=levels, y=ratio, name=test, marker_color=colour,
+                             customdata=rows[["MASE", "Naive MASE (same series)"]].values,
+                             hovertemplate="%{x}: model %{customdata[0]:.2f} vs Naive %{customdata[1]:.2f}"
+                                           " (ratio %{y:.2f})<extra>" + test + "</extra>"))
+    fig.add_hline(y=1, line=dict(color=config.FORECAST_COLOUR, dash="dash"))
+    fig.add_annotation(x=1, xref="paper", y=1, yref="y", text="Naive = 1.0  (below = better than Naive)", showarrow=False,
+                       xanchor="right", yanchor="bottom", bgcolor="white", font=dict(size=11, color=config.FORECAST_COLOUR))
+    fig.update_layout(template="plotly_white", barmode="group", height=360, margin=dict(l=60, r=20, t=40, b=40),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0), yaxis_title="model MASE ÷ Naive MASE")
+    return fig
+
+
+def winners_table(winners, levels):
+    """How many series each standard model won (cv1 + cv2 together, picked by MASE), and the winners' average MASE vs Naive."""
+    counts = pd.crosstab(winners["level"], winners["winner"])
+    counts = counts.loc[:, counts.sum().sort_values(ascending=False).index]
+    avg = winners.groupby("level")[["winner_avg_MASE", "Naive_avg_MASE"]].mean().round(3)
+    table = counts.join(avg.rename(columns={"winner_avg_MASE": "winner avg MASE", "Naive_avg_MASE": "Naive avg MASE"}))
+    table.insert(0, "series", counts.sum(axis=1))
+    return table.reindex([lv for lv in levels if lv in table.index]).rename_axis("Level").reset_index()
+
+
+def reconciliation_table(recon):
+    """The 6 ways of making levels add up, scored on cv2 (MASE, lower = better); the chosen one marked."""
+    table = recon.drop(columns=["version", "role"], errors="ignore").copy()
+    table["chosen"] = table["chosen"].map({True: "✓ chosen", False: ""})
+    return table.round(3).rename(columns={"method": "Method"})
+
+
+def coverage_table(vd, levels):
+    """Share of real weeks inside the 80% / 95% ranges: cv2 (ranges from cv1 errors) and the backtest."""
+    cv2 = vd.practice_coverage.rename(columns={"group": "Group", "cv2 weeks": "Weeks with a range",
+                                                "80% coverage": "Inside 80%", "95% coverage": "Inside 95%"})
+    cv2 = cv2[["Group", "Weeks with a range", "Inside 80%", "Inside 95%"]].assign(Test=TESTS["cv2"])
+    s8 = vd.step8[vd.step8["lo80"].notna()]
+    bt = s8.groupby("level").agg(**{"Weeks with a range": ("week", "size"),
+                                     "Inside 80%": ("inside 80%", lambda x: x.astype(bool).mean()),
+                                     "Inside 95%": ("inside 95%", lambda x: x.astype(bool).mean())})
+    bt = bt.reindex([lv for lv in levels if lv in bt.index]).rename_axis("Group").reset_index().assign(Test=TESTS["backtest"])
+    table = pd.concat([cv2, bt], ignore_index=True)[["Test", "Group", "Weeks with a range", "Inside 80%", "Inside 95%"]]
+    return table.round(3)
