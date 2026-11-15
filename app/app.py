@@ -88,6 +88,17 @@ def tree_legend():
                     for name, colour in swatches], class_="mt-1")
 
 
+def circle_legend():
+    """What the circle tree's colours and outlines mean, in words (Step 16)."""
+    def dot(fill, border="#1D2430", width=1):
+        return ui.span(style=f"display:inline-block;width:12px;height:12px;border-radius:50%;background:{fill};"
+                             f"border:{width}px solid {border};margin-right:4px;vertical-align:-1px")
+    items = [(dot(colour), config.LANE_WORDS[lane].split(" (")[0].replace("judgement: new launch", "judgement"))
+             for lane, colour in config.LANE_COLOURS.items() if lane != "judgement (one-sale)"]
+    items += [(dot("#FFFFFF", config.FLAG_COLOUR, 3), "review flag"), (dot(config.PATH_FILL), "on the selected path")]
+    return ui.div(*[ui.span(mark, text, class_="me-3 small") for mark, text in items], class_="mt-1")
+
+
 
 def coming_soon(step, what):
     return ui.div(ui.p(ui.strong(f"Coming in Step {step}. "), what), class_="text-muted p-3")
@@ -116,11 +127,18 @@ def build_ui():
     forecast_page = ui.nav_panel(
         "Forecast",
         ui.output_ui("title_strip"),
-              ui.card(ui.card_header("Product hierarchy: click a box to select it (click the top box to go back up)"),
-                output_widget("tree_chart"),
-                tree_legend(),
-                ui.p("Box size = 13-week forecast (weeks 67-79); very small and stopped products are drawn at a minimum "
-                     "size so they can be clicked - hover for the true number.", class_="text-muted small mb-0")),
+                     ui.card(ui.card_header("Product hierarchy: click to select a series (click the selected one again to go back up)"),
+                ui.input_radio_buttons("tree_view", None, {"circles": "Circles", "boxes": "Boxes"}, inline=True),
+                ui.panel_conditional("input.tree_view === 'circles'",
+                    ui.div(id="echarts_tree", style="width:100%;height:420px"),
+                    circle_legend(),
+                    ui.p("Circle size = square root of the 13-week forecast (weeks 67-79), so small products stay visible; "
+                         "hover for the true number.", class_="text-muted small mb-0")),
+                ui.panel_conditional("input.tree_view === 'boxes'",
+                    output_widget("tree_chart"),
+                    tree_legend(),
+                    ui.p("Box size = 13-week forecast (weeks 67-79); very small and stopped products are drawn at a minimum "
+                         "size so they can be clicked - hover for the true number.", class_="text-muted small mb-0"))),
 
         ui.navset_card_underline(
             ui.nav_panel(window_title("final", "Final forecast"),
@@ -175,6 +193,8 @@ def build_ui():
         ui.nav_spacer(),
         ui.nav_control(ui.output_ui("badge")),
         title=config.APP_TITLE, id="page", sidebar=sidebar, window_title=config.APP_TITLE,
+        header=ui.TagList(ui.tags.script(src="echarts.min.js"), ui.tags.script(src="tree.js")),   # Step 16 circle tree
+
     )
 
 
@@ -233,6 +253,21 @@ def server(input, output, session):
 
         widget.data[0].on_click(on_click)
         return widget
+
+    # ---- Step 16: the circle tree (drawn in the browser by www/tree.js) ----
+    @reactive.effect
+    async def _send_circle_tree():                        # the selection or the version changed: redraw the circles
+        vd = version_data()
+        await session.send_custom_message("tree_data", tree.echarts_tree(DATA["hierarchy"], vd.final, vd.routing, selected()))
+
+    @reactive.effect
+    @reactive.event(input.tree_click)
+    def _from_circle_tree():                              # a circle was clicked
+        clicked = input.tree_click()
+        if clicked == selected() and clicked != "Total":  # the selected circle again = go back up one level
+            clicked = DATA["hierarchy"].parent[clicked]
+        if clicked != selected():
+            selected.set(clicked)
 
     @output(suspend_when_hidden=False)                    # fill it even when the top bar is folded on a small screen
     @render.ui
@@ -476,4 +511,5 @@ def server_when_data_failed(input, output, session):
     pass                                                   # nothing to do: the page only shows the error card
 
 
-app = App(build_ui(), server) if LOAD_ERROR is None else App(build_error_ui(), server_when_data_failed)
+app = (App(build_ui(), server, static_assets=config.WWW_DIR) if LOAD_ERROR is None      # www/: ECharts + tree.js
+       else App(build_error_ui(), server_when_data_failed))

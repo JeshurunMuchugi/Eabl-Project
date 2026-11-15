@@ -191,3 +191,26 @@ def test_tree_data(data, version):
     assert size["Total"] <= truth["Total"] * 1.02                                        # minimum boxes add under 2%
     assert f"{truth['Total']:,.1f} cases" in t["hover"][0]                               # hover shows the TRUE forecast
     assert set(t["colours"]) <= set(config.LANE_COLOURS.values()) | {config.UPPER_COLOUR}
+
+
+# ---- 11. Circle tree (Step 16): only the path is open, sizes follow the forecast, flags outlined ---------------
+def test_circle_tree(data):
+    import json
+    h, vd = data["hierarchy"], data["versions"]["dec_cleaned"]
+    t = tree.echarts_tree(h, vd.final, vd.routing, "Beer/Premium/Guinness")
+    json.dumps(t)                                                                        # it can be sent to the browser
+
+    def walk(node):
+        return [node] + [n for kid in node.get("children", []) for n in walk(kid)]
+    nodes = {n["uid"]: n for n in walk(t["data"])}
+    assert len(nodes) == config.N_SERIES                                                 # all 283 circles are there
+    opened = sorted(uid for uid, n in nodes.items() if n.get("collapsed") is False)
+    assert opened == ["Beer", "Beer/Premium", "Beer/Premium/Guinness", "Total"]          # only the path is open
+    assert nodes["Beer/Premium/Guinness"]["itemStyle"]["color"] == config.PATH_FILL
+    truth = vd.final.groupby("unique_id")["forecast"].sum()
+    assert nodes["Total"]["symbolSize"] == tree.CIRCLE_MAX
+    assert nodes["Beer"]["symbolSize"] == pytest.approx(tree.CIRCLE_MAX * (truth["Beer"] / truth["Total"]) ** 0.5, abs=0.1)
+    assert min(n["symbolSize"] for n in nodes.values()) >= 8                             # stopped products still visible (8 px)
+    flagged = vd.final.drop_duplicates("unique_id")["flag list"].fillna("").str.strip().ne("").sum()
+    assert sum(n["itemStyle"]["borderColor"] == config.FLAG_COLOUR for n in nodes.values()) == flagged
+    assert tree.echarts_tree(h, vd.final, vd.routing, "Spirits/Premium")["height"] > t["height"]   # 25 brands: taller

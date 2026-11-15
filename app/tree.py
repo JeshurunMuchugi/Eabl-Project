@@ -60,3 +60,52 @@ def icicle_data(hierarchy, final, routing):
         data["hover"].append(f"<b>{name}</b><br>Level: {level}<br>13-week forecast: {totals[series_id]:,.1f} cases"
                              f"<br>Lane: {lane_text}<br>Method: {method[series_id]}")
     return data
+
+
+# ---- Step 16: the circle tree (Apache ECharts), like the mock-up ----------------------------------------------
+# Only the path from Total to the selected series is open; every other branch is closed. Circle size = square root
+# of the 13-week forecast (so small products stay visible next to the Total); circles on the path are filled light
+# blue; a product circle takes its lane colour; a series with a review flag gets a thick orange-red outline.
+CIRCLE_MIN, CIRCLE_MAX = 8, 60              # circle diameter in pixels: smallest product ... the Total
+ROW_PIXELS, MIN_HEIGHT = 26, 420            # tree height grows with the longest open column (Spirits/Premium: 25 brands)
+
+
+def path_to(hierarchy, series_id):
+    """['Total', 'Beer', 'Beer/Premium', ...] down to series_id."""
+    path = [series_id]
+    while path[0] in hierarchy.parent:
+        path.insert(0, hierarchy.parent[path[0]])
+    return path
+
+
+def echarts_tree(hierarchy, final, routing, selected):
+    """The nested tree ECharts draws, plus the height it needs. Each circle carries its series id ('uid') so a click
+    can tell Shiny which series was chosen, and its hover text ('tip'), the same text as the box tree plus any flags."""
+    boxes = icicle_data(hierarchy, final, routing)
+    label = dict(zip(boxes["ids"], boxes["labels"]))
+    colour = dict(zip(boxes["ids"], boxes["colours"]))
+    hover = dict(zip(boxes["ids"], boxes["hover"]))
+    totals = final.groupby("unique_id")["forecast"].sum()
+    flags = final.drop_duplicates("unique_id").set_index("unique_id")["flag list"]
+    path = path_to(hierarchy, selected)
+
+    def node(series_id):
+        on_path, kids = series_id in path, hierarchy.children[series_id]
+        flag_text = flags[series_id] if isinstance(flags[series_id], str) and flags[series_id].strip() else ""
+        fill = config.PATH_FILL if on_path else "#FFFFFF"
+        item = {
+            "name": label[series_id], "uid": series_id, "value": round(float(totals[series_id]), 1),
+            "symbolSize": round(max(CIRCLE_MIN, CIRCLE_MAX * (max(float(totals[series_id]), 0) / float(totals["Total"])) ** 0.5), 1),
+            "itemStyle": {"color": fill if kids else colour[series_id],
+                          "borderColor": config.FLAG_COLOUR if flag_text else config.ACTUAL_COLOUR,
+                          "borderWidth": 4 if flag_text else (3 if series_id == selected else 1.2)},
+            "label": {"fontWeight": "bold" if series_id == selected else "normal"},
+            "tip": hover[series_id] + (f"<br>⚑ Review: {flag_text}" if flag_text else ""),
+        }
+        if kids:
+            item["collapsed"] = not on_path                              # only the path to the selection is open
+            item["children"] = [node(kid) for kid in kids]
+        return item
+
+    longest = max(len(hierarchy.children[series_id]) for series_id in path)   # most circles in one open column
+    return {"data": node("Total"), "height": max(MIN_HEIGHT, ROW_PIXELS * longest + 60)}
